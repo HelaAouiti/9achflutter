@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:hive/hive.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:mini_project_9ach/utils/constants.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({Key? key}) : super(key: key);
@@ -24,67 +24,48 @@ class _SignupPageState extends State<SignupPage> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
 
-  // Change cette URL selon ton environnement
-  final String baseUrl = "http://10.0.2.2:5000"; // Android emulator
-  // final String baseUrl = "http://localhost:3000";     // iOS / Web / Mac
-  // final String baseUrl = "http://192.168.1.xx:3000";  // Ton IP locale si sur même WiFi
-
+  // === Enregistrement avec Hive ===
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
 
-    final body = {
-      "Prénom": firstNameController.text.trim(),
-      "Nom": lastNameController.text.trim(),
-      "Adresse": addressController.text.trim(),
-      "Numéro_de_téléphone": phoneNumberController.text.trim(),
-      "email": emailController.text.trim().toLowerCase(),
-      "password": passwordController.text,
-      "confirmPassword": confirmPasswordController.text,
-    };
-
     try {
-      final response = await http.post(
-        Uri.parse("$baseUrl/register"),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode(body),
+      final box = Hive.box('users');
+
+      // Vérifier l'existence de l'email
+      if (box.containsKey(emailController.text.trim().toLowerCase())) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Cet email est déjà utilisé")),
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      // Sauvegarder dans Hive
+      await box.put(emailController.text.trim().toLowerCase(), {
+        "prenom": firstNameController.text.trim(),
+        "nom": lastNameController.text.trim(),
+        "adresse": addressController.text.trim(),
+        "phone": phoneNumberController.text.trim(),
+        "email": emailController.text.trim().toLowerCase(),
+        "password": passwordController.text,
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Compte créé avec succès !"),
+          backgroundColor: Colors.green,
+        ),
       );
 
-      final data = jsonDecode(response.body);
-
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        // Succès
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('auth_token', data['token']);
-        await prefs.setString('user_prenom', data['user']['prenom']);
-        await prefs.setString('user_nom', data['user']['nom']);
-        await prefs.setString('user_email', data['user']['email']);
-        await prefs.setString('user_phone', data['user']['phone'].toString());
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Compte créé avec succès !"),
-            backgroundColor: Colors.green,
-          ),
-        );
-        Navigator.pushReplacementNamed(context, '/home');
-      } else {
-        // Erreur renvoyée par ton API
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(data['message'] ?? "Erreur inconnue")),
-        );
-      }
+      Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
-      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Impossible de contacter le serveur")),
+        const SnackBar(content: Text("Erreur d’enregistrement")),
       );
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -102,7 +83,6 @@ class _SignupPageState extends State<SignupPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // === Ton logo et texte ===
                   Container(
                     height: 230,
                     margin: const EdgeInsets.symmetric(vertical: 24),
@@ -119,13 +99,11 @@ class _SignupPageState extends State<SignupPage> {
                     ]),
                   ),
 
-                  // === Prénom + Nom ===
                   Row(
                     children: [
                       Expanded(
                         child: TextFormField(
                           controller: firstNameController,
-                          keyboardType: TextInputType.name,
                           decoration:
                               const InputDecoration(labelText: 'Prénom'),
                           validator: (v) => v!.isEmpty ? 'Prénom requis' : null,
@@ -135,8 +113,8 @@ class _SignupPageState extends State<SignupPage> {
                       Expanded(
                         child: TextFormField(
                           controller: lastNameController,
-                          keyboardType: TextInputType.name,
-                          decoration: const InputDecoration(labelText: 'Nom'),
+                          decoration:
+                              const InputDecoration(labelText: 'Nom'),
                           validator: (v) => v!.isEmpty ? 'Nom requis' : null,
                         ),
                       ),
@@ -144,7 +122,6 @@ class _SignupPageState extends State<SignupPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  // === Adresse ===
                   TextFormField(
                     controller: addressController,
                     decoration: const InputDecoration(labelText: 'Adresse'),
@@ -152,7 +129,6 @@ class _SignupPageState extends State<SignupPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  // === Téléphone ===
                   TextFormField(
                     controller: phoneNumberController,
                     keyboardType: TextInputType.phone,
@@ -162,7 +138,6 @@ class _SignupPageState extends State<SignupPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  // === Email ===
                   TextFormField(
                     controller: emailController,
                     keyboardType: TextInputType.emailAddress,
@@ -180,7 +155,6 @@ class _SignupPageState extends State<SignupPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  // === Mot de passe ===
                   TextFormField(
                     controller: passwordController,
                     obscureText: true,
@@ -195,7 +169,6 @@ class _SignupPageState extends State<SignupPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  // === Confirmer mot de passe ===
                   TextFormField(
                     controller: confirmPasswordController,
                     obscureText: true,
@@ -210,7 +183,6 @@ class _SignupPageState extends State<SignupPage> {
                   ),
                   const SizedBox(height: 30),
 
-                  // === Bouton Créer compte ===
                   ElevatedButton(
                     onPressed: _isLoading ? null : _register,
                     style: ElevatedButton.styleFrom(
@@ -225,7 +197,6 @@ class _SignupPageState extends State<SignupPage> {
                           ),
                   ),
 
-                  // === Lien vers login ===
                   TextButton(
                     onPressed: () {
                       Navigator.pushReplacementNamed(context, '/login');

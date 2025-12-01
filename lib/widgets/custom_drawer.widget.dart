@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:hive/hive.dart';
 import 'package:mini_project_9ach/utils/constants.dart';
 
 class CustomDrawer extends StatelessWidget {
+  final String userEmail; // L’email de l’utilisateur connecté
+
+  CustomDrawer({required this.userEmail, Key? key}) : super(key: key);
+
   @override
   Widget build(BuildContext context) {
     return Drawer(
       backgroundColor: primaryColor,
-      child: FutureBuilder(
+      child: FutureBuilder<Map<String, dynamic>>(
         future: getUserData(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -15,9 +19,9 @@ class CustomDrawer extends StatelessWidget {
                 child: CircularProgressIndicator(color: Colors.white));
           } else if (snapshot.hasError) {
             return Text('Error: ${snapshot.error}',
-                style: TextStyle(color: Colors.white));
+                style: const TextStyle(color: Colors.white));
           } else {
-            var userData = snapshot.data as Map<String, dynamic>;
+            var userData = snapshot.data ?? {};
 
             return ListView(
               padding: EdgeInsets.zero,
@@ -29,7 +33,7 @@ class CustomDrawer extends StatelessWidget {
                     children: [
                       Flexible(
                         child: Text(
-                          "${userData['firstName']} ${userData['lastName']}",
+                          "${userData['prenom']} ${userData['nom']}",
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 18,
@@ -38,7 +42,7 @@ class CustomDrawer extends StatelessWidget {
                       ),
                       Flexible(
                         child: Text(
-                          userData['email'],
+                          userData['email'] ?? '',
                           style: const TextStyle(
                             color: Colors.white,
                           ),
@@ -46,7 +50,7 @@ class CustomDrawer extends StatelessWidget {
                       ),
                       Flexible(
                         child: Text(
-                          userData['phoneNumber'],
+                          userData['phone'] ?? '',
                           style: const TextStyle(
                             color: Colors.white,
                           ),
@@ -56,7 +60,7 @@ class CustomDrawer extends StatelessWidget {
                   ),
                 ),
                 ListTile(
-                  title: const Text('Acceuil'),
+                  title: const Text('Accueil'),
                   textColor: Colors.white,
                   iconColor: Colors.white,
                   leading: const Icon(Icons.home),
@@ -83,14 +87,11 @@ class CustomDrawer extends StatelessWidget {
                   },
                 ),
                 ListTile(
-                  title: const Text('Se Deconnecter'),
+                  title: const Text('Se Déconnecter'),
                   textColor: Colors.white,
                   iconColor: Colors.white,
                   leading: const Icon(Icons.logout),
-                  onTap: () async {
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.clear(); // ← Vide le local storage
-
+                  onTap: () {
                     Navigator.pushReplacementNamed(context, '/login');
                   },
                 ),
@@ -103,13 +104,16 @@ class CustomDrawer extends StatelessWidget {
   }
 
   Future<Map<String, dynamic>> getUserData() async {
-    final prefs = await SharedPreferences.getInstance();
+    final box = Hive.box('users');
+
+    // Récupère les données de l’utilisateur connecté via son email
+    final user = box.get(userEmail);
 
     return {
-      "firstName": prefs.getString('user_nom') ?? '',
-      "lastName": prefs.getString('user_prenom') ?? '',
-      "email": prefs.getString('user_email') ?? '',
-      "phoneNumber": prefs.getString('user_phone') ?? '',
+      "prenom": user?['prenom'] ?? '',
+      "nom": user?['nom'] ?? '',
+      "email": user?['email'] ?? '',
+      "phone": user?['phone'] ?? '',
     };
   }
 }

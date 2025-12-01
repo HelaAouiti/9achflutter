@@ -1,6 +1,5 @@
-// lib/pages/home.page.dart
-
 import 'package:flutter/material.dart';
+import 'package:hive/hive.dart';
 import 'package:mini_project_9ach/models/product.model.dart';
 import 'package:mini_project_9ach/services/product_service.dart';
 import 'package:mini_project_9ach/utils/constants.dart';
@@ -21,8 +20,8 @@ class _HomePageState extends State<HomePage> {
   List<String> selectedCategories = [];
   List<String> availableCategories = [];
   bool isLoadingCategories = true;
+  String? userEmail; // <- l'email de l'utilisateur connecté
 
-  // ON FORCE LE CHARGEMENT IMMÉDIAT
   late final Future<List<Product>> productsFuture =
       ProductService.getAllProducts().then((products) {
     print("SUCCÈS : ${products.length} produits chargés !");
@@ -36,9 +35,17 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     print("HomePage initState → Future démarré !");
-
-    // Chargement des catégories
     _loadCategories();
+    _loadUserEmail(); // <- charger l'utilisateur connecté
+  }
+
+  Future<void> _loadUserEmail() async {
+    final box = Hive.box('users');
+    if (box.isNotEmpty) {
+      setState(() {
+        userEmail = box.keys.first; // ici on prend le premier utilisateur
+      });
+    }
   }
 
   Future<void> _loadCategories() async {
@@ -52,9 +59,7 @@ class _HomePageState extends State<HomePage> {
       }
     } catch (e) {
       print("Erreur catégories : $e");
-      if (mounted) {
-        setState(() => isLoadingCategories = false);
-      }
+      if (mounted) setState(() => isLoadingCategories = false);
     }
   }
 
@@ -75,7 +80,9 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      drawer: CustomDrawer(),
+      drawer: userEmail != null
+          ? CustomDrawer(userEmail: userEmail!)
+          : null, // <- attend que l'email soit chargé
       appBar: const CustomAppBar(),
       body: Column(
         children: [
@@ -113,7 +120,8 @@ class _HomePageState extends State<HomePage> {
           // Filtres catégories
           if (isLoadingCategories)
             const Padding(
-                padding: EdgeInsets.all(12), child: CircularProgressIndicator())
+                padding: EdgeInsets.all(12),
+                child: CircularProgressIndicator())
           else if (availableCategories.isNotEmpty)
             SizedBox(
               height: 50,
