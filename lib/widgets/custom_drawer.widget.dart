@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
+import 'package:mini_project_9ach/pages/favorites.page.dart';
 import 'package:mini_project_9ach/utils/constants.dart';
 
 class CustomDrawer extends StatelessWidget {
@@ -83,7 +84,11 @@ class CustomDrawer extends StatelessWidget {
                   iconColor: Colors.white,
                   leading: const Icon(Icons.favorite),
                   onTap: () {
-                    Navigator.pop(context);
+                    Navigator.pop(context); // ferme le drawer
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const FavoritesPage()),
+                    );
                   },
                 ),
                 ListTile(

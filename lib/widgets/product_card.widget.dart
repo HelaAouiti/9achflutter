@@ -1,65 +1,103 @@
 // lib/widgets/product_card.widget.dart
 
 import 'package:flutter/material.dart';
+import 'package:mini_project_9ach/services/FavoriteService.dart';
 import '../models/product.model.dart';
 import '../pages/product_details.page.dart';
 
 class ProductCard extends StatefulWidget {
   final Product product;
 
-  const ProductCard({super.key, required this.product});
+  const ProductCard({
+    super.key,
+    required this.product,
+  });
 
   @override
   State<ProductCard> createState() => _ProductCardState();
 }
 
 class _ProductCardState extends State<ProductCard> {
-  // On utilise la valeur locale du produit (isFavorite)
-  late bool isFavorite;
+  // On garde une copie locale du produit pour pouvoir le modifier
+  late Product _currentProduct;
 
-  @override
-  void initState() {
-    super.initState();
-    isFavorite = widget.product.isFavorite;
-  }
+@override
+void initState() {
+  super.initState();
+  _currentProduct = widget.product;
+  _loadFavoriteStatus();
+}
 
-  void _toggleFavorite() {
+Future<void> _loadFavoriteStatus() async {
+  final isFav = await FavoriteService.isFavorite(widget.product.id.toString());
+  if (mounted) {
     setState(() {
-      isFavorite = !isFavorite;
+      _currentProduct = _currentProduct.copyWith(isFavorite: isFav);
     });
-    // Optionnel : tu pourras persister ça plus tard avec SharedPreferences ou Hive
   }
+}
+
+  // Important : si le parent envoie un nouveau produit (ex: après refresh), on met à jour
+  @override
+  void didUpdateWidget(covariant ProductCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.product != widget.product) {
+      _currentProduct = widget.product;
+    }
+  }
+
+void _toggleFavorite() async {
+  final newFavorite = !_currentProduct.isFavorite;
+
+  setState(() {
+    _currentProduct = _currentProduct.copyWith(isFavorite: newFavorite);
+  });
+
+  // Sauvegarde persistante
+  await FavoriteService.toggleFavorite(_currentProduct.id.toString());
+}
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
+        // On passe la version actuelle (avec favori à jour)
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => ProductDetailsPage(product: widget.product),
+            builder: (_) => ProductDetailsPage(product: _currentProduct),
           ),
         );
       },
       child: Card(
         elevation: 6,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        margin: const EdgeInsets.all(8),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(16),
           child: Stack(
             children: [
-              // Image du produit
+              // Image
               Image.network(
-                widget.product.image,
+                _currentProduct.image,
                 width: double.infinity,
                 height: 220,
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) =>
-                    const Icon(Icons.error, size: 50),
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Container(
+                    height: 220,
+                    color: Colors.grey[200],
+                    child: const Center(child: CircularProgressIndicator()),
+                  );
+                },
+                errorBuilder: (_, __, ___) => Container(
+                  height: 220,
+                  color: Colors.grey[300],
+                  child: const Icon(Icons.image_not_supported, size: 50),
+                ),
               ),
 
-              // Bouton Favori en haut à droite
+              // Bouton Favori
               Positioned(
                 top: 8,
                 right: 8,
@@ -68,17 +106,16 @@ class _ProductCardState extends State<ProductCard> {
                   radius: 18,
                   child: IconButton(
                     iconSize: 20,
-                    color: Colors.white,
                     icon: Icon(
-                      isFavorite ? Icons.favorite : Icons.favorite_border,
-                      color: isFavorite ? Colors.red : Colors.white,
+                      _currentProduct.isFavorite ? Icons.favorite : Icons.favorite_border,
+                      color: _currentProduct.isFavorite ? Colors.red : Colors.white,
                     ),
                     onPressed: _toggleFavorite,
                   ),
                 ),
               ),
 
-              // Titre du produit (en bas sur un fond semi-transparent)
+              // Infos en bas
               Positioned(
                 bottom: 0,
                 left: 0,
@@ -96,7 +133,7 @@ class _ProductCardState extends State<ProductCard> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        widget.product.title,
+                        _currentProduct.title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -105,12 +142,12 @@ class _ProductCardState extends State<ProductCard> {
                           fontSize: 14,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 6),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            '${widget.product.price.toStringAsFixed(2)} €',
+                            '${_currentProduct.price.toStringAsFixed(2)} €',
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -119,12 +156,11 @@ class _ProductCardState extends State<ProductCard> {
                           ),
                           Row(
                             children: [
-                              const Icon(Icons.star,
-                                  color: Colors.amber, size: 16),
+                              const Icon(Icons.star, color: Colors.amber, size: 16),
                               const SizedBox(width: 4),
                               Text(
-                                widget.product.rating.toStringAsFixed(1),
-                                style: const TextStyle(color: Colors.white),
+                                _currentProduct.rating.toStringAsFixed(1),
+                                style: const TextStyle(color: Colors.white, fontSize: 14),
                               ),
                             ],
                           ),

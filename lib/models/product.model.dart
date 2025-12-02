@@ -1,4 +1,5 @@
 // lib/models/product.model.dart
+
 class Product {
   final int id;
   final String title;
@@ -11,7 +12,7 @@ class Product {
 
   // Champs locaux (pas dans l'API)
   bool isFavorite;
-  final List<String> comments;
+  List<String> comments;
 
   Product({
     required this.id,
@@ -26,16 +27,52 @@ class Product {
     this.comments = const [],
   });
 
+  // Pour l'API FakeStoreAPI
   factory Product.fromJson(Map<String, dynamic> json) {
+    final ratingMap = json['rating'] as Map<String, dynamic>? ?? {};
     return Product(
-      id: json['id'],
-      title: json['title'],
+      id: json['id'] as int,
+      title: json['title'] as String,
       price: (json['price'] as num).toDouble(),
-      description: json['description'],
-      category: json['category'],
-      image: json['image'],
-      rating: (json['rating']['rate'] as num).toDouble(),
-      ratingCount: json['rating']['count'] as int,
+      description: json['description'] as String,
+      category: json['category'] as String,
+      image: json['image'] as String,
+      rating: (ratingMap['rate'] as num?)?.toDouble() ?? 0.0,
+      ratingCount: (ratingMap['count'] as num?)?.toInt() ?? 0,
+      isFavorite: false,
+      comments: const [],
+    );
+  }
+
+  // Pour Hive : sauvegarde complète de l'objet
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'price': price,
+      'description': description,
+      'category': category,
+      'image': image,
+      'rating': rating,
+      'ratingCount': ratingCount,
+      'isFavorite': isFavorite,
+      'comments': comments,
+    };
+  }
+
+  // Pour recréer depuis Hive
+  factory Product.fromJsonLocal(Map<String, dynamic> json) {
+    return Product(
+      id: json['id'] as int,
+      title: json['title'] as String,
+      price: (json['price'] as num).toDouble(),
+      description: json['description'] as String,
+      category: json['category'] as String,
+      image: json['image'] as String,
+      rating: (json['rating'] as num).toDouble(),
+      ratingCount: json['ratingCount'] as int,
+      isFavorite: json['isFavorite'] as bool? ?? false,
+      comments: List<String>.from(json['comments'] as List? ?? []),
     );
   }
 
@@ -56,4 +93,10 @@ class Product {
       comments: comments ?? this.comments,
     );
   }
+
+  @override
+  bool operator ==(Object other) => identical(this, other) || other is Product && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
