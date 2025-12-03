@@ -14,6 +14,7 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController passwordController = TextEditingController();
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
+  bool _obscurePassword = true;
 
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
@@ -22,6 +23,7 @@ class _LoginPageState extends State<LoginPage> {
 
     try {
       final box = Hive.box('users');
+      //print(Hive.box);
       final email = emailController.text.trim().toLowerCase();
 
       if (!box.containsKey(email)) {
@@ -74,16 +76,16 @@ class _LoginPageState extends State<LoginPage> {
               children: [
                 // Logo + Titre
                 Container(
-                  height: 230,
+                  height: 180,
                   margin: const EdgeInsets.symmetric(vertical: 24),
                   child: Column(
                     children: [
                       Image.asset('assets/images/logo.png'),
                       const SizedBox(height: 20),
                       const Text(
-                        "قشش باحسن الأسوام",
+                        "Recycle ton style préserve la planète",
                         style: TextStyle(
-                            fontSize: 30,
+                            fontSize: 15,
                             color: primaryColor,
                             fontWeight: FontWeight.bold),
                       ),
@@ -110,14 +112,30 @@ class _LoginPageState extends State<LoginPage> {
                 // Mot de passe
                 TextFormField(
                   controller: passwordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: 'Mot de Passe'),
+                  obscureText: _obscurePassword,
+                  decoration: InputDecoration(
+                    labelText: 'Mot de Passe',
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _obscurePassword = !_obscurePassword;
+                        });
+                      },
+                    ),
+                  ),
                   validator: (value) {
-                    if (value == null || value.isEmpty)
+                    if (value == null || value.isEmpty) {
                       return 'Mot de passe requis';
+                    }
                     return null;
                   },
                 ),
+
                 const SizedBox(height: 30),
 
                 // Bouton Connexion

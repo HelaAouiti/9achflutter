@@ -23,6 +23,8 @@ class _SignupPageState extends State<SignupPage> {
 
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
 
   // === Enregistrement avec Hive ===
   Future<void> _register() async {
@@ -84,21 +86,20 @@ class _SignupPageState extends State<SignupPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Container(
-                    height: 230,
+                    height: 180,
                     margin: const EdgeInsets.symmetric(vertical: 24),
                     child: Column(children: [
                       Image.asset('assets/images/logo.png'),
                       const SizedBox(height: 20),
                       const Text(
-                        "قشش باحسن الأسوام",
+                        "Recycle ton style préserve la planète",
                         style: TextStyle(
-                            fontSize: 30,
+                            fontSize: 15,
                             color: primaryColor,
-                            fontWeight: FontWeight.bold),
+                            fontWeight: FontWeight.normal),
                       ),
                     ]),
                   ),
-
                   Row(
                     children: [
                       Expanded(
@@ -113,22 +114,19 @@ class _SignupPageState extends State<SignupPage> {
                       Expanded(
                         child: TextFormField(
                           controller: lastNameController,
-                          decoration:
-                              const InputDecoration(labelText: 'Nom'),
+                          decoration: const InputDecoration(labelText: 'Nom'),
                           validator: (v) => v!.isEmpty ? 'Nom requis' : null,
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
-
                   TextFormField(
                     controller: addressController,
                     decoration: const InputDecoration(labelText: 'Adresse'),
                     validator: (v) => v!.isEmpty ? 'Adresse requise' : null,
                   ),
                   const SizedBox(height: 16),
-
                   TextFormField(
                     controller: phoneNumberController,
                     keyboardType: TextInputType.phone,
@@ -137,7 +135,6 @@ class _SignupPageState extends State<SignupPage> {
                     validator: (v) => v!.isEmpty ? 'Téléphone requis' : null,
                   ),
                   const SizedBox(height: 16),
-
                   TextFormField(
                     controller: emailController,
                     keyboardType: TextInputType.emailAddress,
@@ -154,12 +151,24 @@ class _SignupPageState extends State<SignupPage> {
                     },
                   ),
                   const SizedBox(height: 16),
-
                   TextFormField(
                     controller: passwordController,
-                    obscureText: true,
-                    decoration:
-                        const InputDecoration(labelText: 'Mot de passe'),
+                    obscureText: _obscurePassword,
+                    decoration: InputDecoration(
+                      labelText: 'Mot de passe',
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _obscurePassword = !_obscurePassword;
+                          });
+                        },
+                      ),
+                    ),
                     validator: (value) {
                       if (value == null || value.length < 8) {
                         return 'Minimum 8 caractères';
@@ -168,12 +177,24 @@ class _SignupPageState extends State<SignupPage> {
                     },
                   ),
                   const SizedBox(height: 16),
-
                   TextFormField(
                     controller: confirmPasswordController,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                        labelText: 'Confirmer le mot de passe'),
+                    obscureText: _obscureConfirmPassword,
+                    decoration: InputDecoration(
+                      labelText: 'Confirmer le mot de passe',
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscureConfirmPassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _obscureConfirmPassword = !_obscureConfirmPassword;
+                          });
+                        },
+                      ),
+                    ),
                     validator: (value) {
                       if (value != passwordController.text) {
                         return 'Les mots de passe ne correspondent pas';
@@ -182,7 +203,6 @@ class _SignupPageState extends State<SignupPage> {
                     },
                   ),
                   const SizedBox(height: 30),
-
                   ElevatedButton(
                     onPressed: _isLoading ? null : _register,
                     style: ElevatedButton.styleFrom(
@@ -196,7 +216,6 @@ class _SignupPageState extends State<SignupPage> {
                             style: TextStyle(color: Colors.white, fontSize: 16),
                           ),
                   ),
-
                   TextButton(
                     onPressed: () {
                       Navigator.pushReplacementNamed(context, '/login');

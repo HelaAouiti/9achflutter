@@ -88,7 +88,8 @@ class CartPage extends StatelessWidget {
               );
               Navigator.pop(context); // Retour à la page précédente
             },
-            style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: const Color.fromARGB(255, 255, 255, 255)),
             child: const Text("Confirmer"),
           ),
         ],

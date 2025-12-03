@@ -16,35 +16,36 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final TextEditingController searchController = TextEditingController();
+
   String searchString = "";
   List<String> selectedCategories = [];
   List<String> availableCategories = [];
-  bool isLoadingCategories = true;
-  String? userEmail;
 
-  // On supprime le late final → on recrée le Future à chaque build ou refresh
-  Future<List<Product>>? productsFuture;
+  bool isLoadingCategories = true;
+  bool isLoadingProducts = true; // indique le chargement des produits
+
+  List<Product> allProducts = []; // tous les produits chargés
+  String? userEmail;
 
   @override
   void initState() {
     super.initState();
     _loadUserEmail();
     _loadCategories();
-    _loadProducts(); // On charge les produits ici
+    _loadProducts();
   }
 
-  Future<void> _loadProducts() async {
-    setState(() {
-      productsFuture = ProductService.getAllProducts().then((products) {
-        print("PRODUITS CHARGÉS : ${products.length}");
-        return products;
-      }).catchError((error) {
-        print("ERREUR PRODUITS : $error");
-        return <Product>[]; // Retourne liste vide en cas d'erreur
+  // Chargement de l'email de l'utilisateur connecté (Hive)
+  Future<void> _loadUserEmail() async {
+    final box = await Hive.openBox('users');
+    if (box.isNotEmpty && mounted) {
+      setState(() {
+        userEmail = box.keys.first as String;
       });
-    });
+    }
   }
 
+  // Chargement des catégories
   Future<void> _loadCategories() async {
     try {
       final categories = await ProductService.getCategories();
@@ -62,39 +63,79 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _loadUserEmail() async {
-    final box =
-        await Hive.openBox('users'); // Assure-toi que la box est ouverte
-    if (box.isNotEmpty && mounted) {
-      setState(() {
-        userEmail = box.keys.first as String;
-      });
+  // Chargement des produits (version fiable)
+  Future<void> _loadProducts() async {
+    setState(() {
+      isLoadingProducts = true;
+    });
+
+    try {
+      final products = await ProductService.getAllProducts();
+      print("PRODUITS CHARGÉS : ${products.length}");
+
+      if (mounted) {
+        setState(() {
+          allProducts = products;
+          isLoadingProducts = false;
+        });
+      }
+    } catch (e) {
+      print("ERREUR CHARGEMENT PRODUITS : $e");
+      if (mounted) {
+        setState(() {
+          allProducts = [];
+          isLoadingProducts = false;
+        });
+      }
     }
   }
 
+  // Mise à jour de la recherche
   void _updateSearch() {
     setState(() {
       searchString = searchController.text.trim();
     });
   }
 
+  // Toggle catégorie
   void _toggleCategory(String category) {
     setState(() {
-      selectedCategories.contains(category)
-          ? selectedCategories.remove(category)
-          : selectedCategories.add(category);
+      if (selectedCategories.contains(category)) {
+        selectedCategories.remove(category);
+      } else {
+        selectedCategories.add(category);
+      }
     });
   }
 
+  // Refresh complet
   Future<void> _onRefresh() async {
+    searchController.clear();
+    selectedCategories.clear();
     await Future.wait([
       _loadProducts(),
       _loadCategories(),
     ]);
+    _updateSearch();
+  }
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // Filtrage local (instantané)
+    final filteredProducts = allProducts.where((product) {
+      final matchesSearch =
+          product.title.toLowerCase().contains(searchString.toLowerCase());
+      final matchesCategory = selectedCategories.isEmpty ||
+          selectedCategories.contains(product.category);
+      return matchesSearch && matchesCategory;
+    }).toList();
+
     return Scaffold(
       drawer: userEmail != null ? CustomDrawer(userEmail: userEmail!) : null,
       appBar: const CustomAppBar(),
@@ -112,7 +153,7 @@ class _HomePageState extends State<HomePage> {
                 child: TextField(
                   controller: searchController,
                   textInputAction: TextInputAction.search,
-                  onChanged: (_) => _updateSearch(), // Plus réactif
+                  onChanged: (_) => _updateSearch(),
                   decoration: InputDecoration(
                     hintText: "Rechercher un produit...",
                     prefixIcon: const Icon(Icons.search),
@@ -133,11 +174,12 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
 
-            // Filtres catégories
+            // Filtres par catégorie
             if (isLoadingCategories)
               const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: CircularProgressIndicator())
+                padding: EdgeInsets.all(12),
+                child: CircularProgressIndicator(),
+              )
             else if (availableCategories.isEmpty)
               const Padding(
                 padding: EdgeInsets.all(16),
@@ -161,8 +203,15 @@ class _HomePageState extends State<HomePage> {
                         onSelected: (_) => _toggleCategory(category),
                         selectedColor: primaryColor,
                         backgroundColor: primaryColor.withOpacity(0.1),
+                        labelStyle: TextStyle(
+                          color: isSelected ? Colors.white : primaryColor,
+                          fontWeight: FontWeight.w500,
+                        ),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30)),
+                          borderRadius: BorderRadius.circular(30),
+                          side:
+                              BorderSide(color: primaryColor.withOpacity(0.3)),
+                        ),
                       ),
                     );
                   },
@@ -171,15 +220,18 @@ class _HomePageState extends State<HomePage> {
 
             const SizedBox(height: 16),
 
-            // Titre
+            // Titre "NEW ARRIVAL"
             Column(
               children: [
-                Text('NEW ARRIVAL',
-                    style: TextStyle(
-                        fontSize: 22,
-                        letterSpacing: 10,
-                        color: primaryColor,
-                        fontWeight: FontWeight.w500)),
+                Text(
+                  'NEW ARRIVAL',
+                  style: TextStyle(
+                    fontSize: 22,
+                    letterSpacing: 10,
+                    color: primaryColor,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Image.asset("assets/images/bar.png", height: 12),
               ],
@@ -189,56 +241,38 @@ class _HomePageState extends State<HomePage> {
 
             // Liste des produits
             Expanded(
-              child: productsFuture == null
+              child: isLoadingProducts
                   ? const Center(child: CircularProgressIndicator())
-                  : FutureBuilder<List<Product>>(
-                      future: productsFuture,
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return const Center(
-                              child: CircularProgressIndicator());
-                        }
-
-                        if (snapshot.hasError) {
-                          return Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text("Erreur de chargement"),
-                                ElevatedButton(
+                  : filteredProducts.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.inventory_2_outlined,
+                                size: 80,
+                                color: Colors.grey[400],
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                allProducts.isEmpty
+                                    ? "Aucun produit disponible"
+                                    : "Aucun produit ne correspond à vos filtres",
+                                style: const TextStyle(fontSize: 18),
+                                textAlign: TextAlign.center,
+                              ),
+                              if (allProducts.isEmpty) ...[
+                                const SizedBox(height: 16),
+                                ElevatedButton.icon(
                                   onPressed: _loadProducts,
-                                  child: Text("Réessayer"),
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text("Réessayer"),
                                 ),
                               ],
-                            ),
-                          );
-                        }
-
-                        final products = snapshot.data ?? [];
-                        if (products.isEmpty) {
-                          return const Center(
-                              child: Text("Aucun produit disponible"));
-                        }
-
-                        final filtered = products.where((p) {
-                          final matchesSearch = p.title
-                              .toLowerCase()
-                              .contains(searchString.toLowerCase());
-                          final matchesCat = selectedCategories.isEmpty ||
-                              selectedCategories.contains(p.category);
-                          return matchesSearch && matchesCat;
-                        }).toList();
-
-                        if (filtered.isEmpty) {
-                          return const Center(
-                              child: Text(
-                                  "Aucun produit trouvé avec ces filtres"));
-                        }
-
-                        return ProductList(products: filtered);
-                      },
-                    ),
+                            ],
+                          ),
+                        )
+                      : ProductList(products: filteredProducts),
             ),
           ],
         ),
