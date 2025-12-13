@@ -71,7 +71,6 @@ class CartService extends ChangeNotifier {
     await _box.put(_key, data);
   }
 
-  // Public methods — tous attendent l'initialisation si besoin
   Future<void> addToCart(Product product, {int quantity = 1}) async {
     if (!_isInitialized) await _init();
 
