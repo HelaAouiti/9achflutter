@@ -1,6 +1,7 @@
+// pages/signup.page.dart (ou où tu l'as placée)
+
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:mini_project_9ach/utils/constants.dart';
 
@@ -26,17 +27,18 @@ class _SignupPageState extends State<SignupPage> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
 
-  // === Enregistrement avec Hive ===
+  // === Enregistrement avec Hive + sauvegarde de la session ===
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
 
     try {
-      final box = Hive.box('users');
+      final usersBox = Hive.box('users');
+      final String emailKey = emailController.text.trim().toLowerCase();
 
-      // Vérifier l'existence de l'email
-      if (box.containsKey(emailController.text.trim().toLowerCase())) {
+      // Vérifier si l'email existe déjà
+      if (usersBox.containsKey(emailKey)) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Cet email est déjà utilisé")),
         );
@@ -44,16 +46,21 @@ class _SignupPageState extends State<SignupPage> {
         return;
       }
 
-      // Sauvegarder dans Hive
-      await box.put(emailController.text.trim().toLowerCase(), {
+      // Sauvegarder les données de l'utilisateur
+      await usersBox.put(emailKey, {
         "prenom": firstNameController.text.trim(),
         "nom": lastNameController.text.trim(),
         "adresse": addressController.text.trim(),
         "phone": phoneNumberController.text.trim(),
-        "email": emailController.text.trim().toLowerCase(),
+        "email": emailKey,
         "password": passwordController.text,
       });
 
+      // === NOUVEAU : Sauvegarder l'utilisateur connecté dans la boîte 'auth' ===
+      final authBox = await Hive.openBox('auth');
+      await authBox.put('current_user_email', emailKey);
+
+      // Message de succès
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Compte créé avec succès !"),
@@ -61,13 +68,18 @@ class _SignupPageState extends State<SignupPage> {
         ),
       );
 
-      Navigator.pushReplacementNamed(context, '/home');
+      // Aller directement à la page d'accueil (utilisateur connecté)
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Erreur d’enregistrement")),
       );
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 

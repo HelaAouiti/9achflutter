@@ -1,11 +1,16 @@
+// lib/pages/home.page.dart
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:mini_project_9ach/models/product.model.dart';
+import 'package:mini_project_9ach/services/FavoriteService.dart';
 import 'package:mini_project_9ach/services/product_service.dart';
 import 'package:mini_project_9ach/utils/constants.dart';
 import 'package:mini_project_9ach/widgets/custom_appbar.widget.dart';
 import 'package:mini_project_9ach/widgets/custom_drawer.widget.dart';
 import 'package:mini_project_9ach/widgets/product_list.widget.dart';
+import 'package:mini_project_9ach/widgets/recommended_section.widget.dart'; // Widget séparé
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -26,26 +31,23 @@ class _HomePageState extends State<HomePage> {
   List<Product> allProducts = [];
   List<Product> recommendedProducts = [];
 
-  String? userEmail;
-
- 
-  final List<int> viewedProductIds = [1, 15, 20]; 
+  late ValueListenable<Box> _favoritesListenable;
 
   @override
   void initState() {
     super.initState();
-    _loadUserEmail();
     _loadCategories();
     _loadProducts();
+
+    _favoritesListenable = Hive.box('favorites').listenable();
+    _favoritesListenable.addListener(_updateRecommendationsFromFavorites);
   }
 
-  Future<void> _loadUserEmail() async {
-    final box = await Hive.openBox('users');
-    if (box.isNotEmpty && mounted) {
-      setState(() {
-        userEmail = box.keys.first as String;
-      });
-    }
+  @override
+  void dispose() {
+    _favoritesListenable.removeListener(_updateRecommendationsFromFavorites);
+    searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadCategories() async {
@@ -70,14 +72,15 @@ class _HomePageState extends State<HomePage> {
       isLoadingProducts = true;
       isLoadingRecommendations = true;
     });
+
     try {
       final products = await ProductService.getAllProducts();
-      print("PRODUITS CHARGÉS : ${products.length}");
+      final favoriteIds = await FavoriteService.getFavoriteIds();
 
       if (mounted) {
         setState(() {
           allProducts = products;
-          recommendedProducts = _getRecommendedProducts(products);
+          recommendedProducts = _getRecommendedProducts(products, favoriteIds);
           isLoadingProducts = false;
           isLoadingRecommendations = false;
         });
@@ -95,44 +98,63 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
- 
-  List<Product> _getRecommendedProducts(List<Product> allProducts) {
+  void _updateRecommendationsFromFavorites() async {
+    if (allProducts.isEmpty) return;
+
+    final favoriteIds = await FavoriteService.getFavoriteIds();
+
+    if (mounted) {
+      setState(() {
+        recommendedProducts = _getRecommendedProducts(allProducts, favoriteIds);
+        isLoadingRecommendations = false;
+      });
+    }
+  }
+
+  List<Product> _getRecommendedProducts(
+      List<Product> allProducts, List<String> favoriteIds) {
     const int maxRecommendations = 10;
 
-    if (allProducts.isEmpty) return [];
+    final List<int> favoriteIntIds = favoriteIds
+        .map((id) => int.tryParse(id) ?? 0)
+        .where((id) => id > 0)
+        .toList();
 
-    if (viewedProductIds.isEmpty) {
-     
+    if (allProducts.isEmpty || favoriteIntIds.isEmpty) {
       final sorted = List<Product>.from(allProducts)
-        ..sort((a, b) {
-          return b.rating.compareTo(a.rating);
-        });
+        ..sort((a, b) => b.rating.compareTo(a.rating));
       return sorted.take(maxRecommendations).toList();
     }
 
-    
-    final Set<String> viewedCategories = {};
-    for (final id in viewedProductIds) {
+    final Set<String> favoriteCategories = {};
+    for (final id in favoriteIntIds) {
       final product = allProducts.firstWhere(
         (p) => p.id == id,
-        orElse: () => Product(id: 0, title: '', price: 0, category: '', image: '', description: '', rating: 0, ratingCount: 0),
+        orElse: () => Product(
+            id: 0,
+            title: '',
+            price: 0,
+            category: '',
+            image: '',
+            description: '',
+            rating: 0,
+            ratingCount: 0),
       );
       if (product.category.isNotEmpty) {
-        viewedCategories.add(product.category);
+        favoriteCategories.add(product.category);
       }
     }
 
-    
     List<Product> candidates = allProducts.where((p) {
-      return viewedCategories.contains(p.category) && !viewedProductIds.contains(p.id);
+      return favoriteCategories.contains(p.category) &&
+          !favoriteIntIds.contains(p.id);
     }).toList();
 
-    
     if (candidates.length < maxRecommendations) {
-      final topGlobal = allProducts.where((p) => !viewedProductIds.contains(p.id)).toList()
-        ..sort((a, b) {
-          return b.rating.compareTo(a.rating);
-        });
+      final topGlobal = allProducts
+          .where((p) => !favoriteIntIds.contains(p.id))
+          .toList()
+        ..sort((a, b) => b.rating.compareTo(a.rating));
 
       for (final p in topGlobal) {
         if (candidates.length >= maxRecommendations) break;
@@ -140,10 +162,7 @@ class _HomePageState extends State<HomePage> {
       }
     }
 
-    candidates.sort((a, b) {
-      return b.rating.compareTo(a.rating);
-    });
-
+    candidates.sort((a, b) => b.rating.compareTo(a.rating));
     return candidates.take(maxRecommendations).toList();
   }
 
@@ -174,32 +193,29 @@ class _HomePageState extends State<HomePage> {
   }
 
   @override
-  void dispose() {
-    searchController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final filteredProducts = allProducts.where((product) {
-      final matchesSearch = product.title.toLowerCase().contains(searchString.toLowerCase());
-      final matchesCategory = selectedCategories.isEmpty || selectedCategories.contains(product.category);
+      final matchesSearch =
+          product.title.toLowerCase().contains(searchString.toLowerCase());
+      final matchesCategory = selectedCategories.isEmpty ||
+          selectedCategories.contains(product.category);
       return matchesSearch && matchesCategory;
     }).toList();
 
     return Scaffold(
-      drawer: userEmail != null ? CustomDrawer(userEmail: userEmail!) : null,
+      drawer: const CustomDrawer(),
       appBar: const CustomAppBar(),
       body: RefreshIndicator(
         onRefresh: _onRefresh,
         child: ListView(
           children: [
-            
+            // 1. Barre de recherche
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: Card(
                 elevation: 6,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
                 child: TextField(
                   controller: searchController,
                   textInputAction: TextInputAction.search,
@@ -217,17 +233,22 @@ class _HomePageState extends State<HomePage> {
                           )
                         : null,
                     border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
                   ),
                 ),
               ),
             ),
 
-            
+            // 2. Filtres par catégorie
             if (isLoadingCategories)
-              const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator())
+              const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: CircularProgressIndicator())
             else if (availableCategories.isEmpty)
-              const Padding(padding: EdgeInsets.all(16), child: Text("Aucune catégorie disponible"))
+              const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text("Aucune catégorie disponible"))
             else
               SizedBox(
                 height: 50,
@@ -246,10 +267,13 @@ class _HomePageState extends State<HomePage> {
                         onSelected: (_) => _toggleCategory(category),
                         selectedColor: primaryColor,
                         backgroundColor: primaryColor.withOpacity(0.1),
-                        labelStyle: TextStyle(color: isSelected ? Colors.white : primaryColor, fontWeight: FontWeight.w500),
+                        labelStyle: TextStyle(
+                            color: isSelected ? Colors.white : primaryColor,
+                            fontWeight: FontWeight.w500),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(30),
-                          side: BorderSide(color: primaryColor.withOpacity(0.3)),
+                          side:
+                              BorderSide(color: primaryColor.withOpacity(0.3)),
                         ),
                       ),
                     );
@@ -257,103 +281,28 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
 
-            
-            if (isLoadingRecommendations)
-              const Center(child: CircularProgressIndicator())
-            else if (recommendedProducts.isNotEmpty) ...[
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'RECOMMANDÉ POUR VOUS',
-                      style: TextStyle(fontSize: 20, letterSpacing: 8, color: primaryColor, fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(height: 4),
-                    Image.asset("assets/images/bar.png", height: 12),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 300,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: recommendedProducts.length,
-                  itemBuilder: (context, index) {
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 16),
-                      child: SizedBox(
-                        width: 180,
-                        child: Card(
-                          elevation: 4,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              ClipRRect(
-                                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                                child: Image.network(
-                                  recommendedProducts[index].image,
-                                  height: 140,
-                                  width: double.infinity,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => Container(
-                                    height: 140,
-                                    color: Colors.grey[300],
-                                    child: const Icon(Icons.image_not_supported, size: 50),
-                                  ),
-                                ),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      recommendedProducts[index].title,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      "${recommendedProducts[index].price.toStringAsFixed(2)} €",
-                                      style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        const Icon(Icons.star, size: 16, color: Colors.amber),
-                                        Text(" ${recommendedProducts[index].rating}", style: const TextStyle(fontSize: 12)),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 24),
-            ],
+            // 3. Section Recommandations
+            RecommendedSection(
+              recommendedProducts: recommendedProducts,
+              isLoading: isLoadingRecommendations,
+            ),
 
-          
+            const SizedBox(height: 24),
+
+            // 4. Section New Arrival
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
                 children: [
                   Text(
                     'NEW ARRIVAL',
-                    style: TextStyle(fontSize: 22, letterSpacing: 10, color: primaryColor, fontWeight: FontWeight.w500),
+                    style: TextStyle(
+                        fontSize: 22,
+                        letterSpacing: 10,
+                        color: primaryColor,
+                        fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(height: 4),
                   Image.asset("assets/images/bar.png", height: 12),
@@ -362,8 +311,9 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 16),
 
+            // 5. Liste des produits
             SizedBox(
-              height: MediaQuery.of(context).size.height * 0.6, 
+              height: MediaQuery.of(context).size.height * 0.6,
               child: isLoadingProducts
                   ? const Center(child: CircularProgressIndicator())
                   : filteredProducts.isEmpty
@@ -371,10 +321,13 @@ class _HomePageState extends State<HomePage> {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.inventory_2_outlined, size: 80, color: Colors.grey[400]),
+                              Icon(Icons.inventory_2_outlined,
+                                  size: 80, color: Colors.grey[400]),
                               const SizedBox(height: 16),
                               Text(
-                                allProducts.isEmpty ? "Aucun produit disponible" : "Aucun produit ne correspond à vos filtres",
+                                allProducts.isEmpty
+                                    ? "Aucun produit disponible"
+                                    : "Aucun produit ne correspond à vos filtres",
                                 style: const TextStyle(fontSize: 18),
                                 textAlign: TextAlign.center,
                               ),

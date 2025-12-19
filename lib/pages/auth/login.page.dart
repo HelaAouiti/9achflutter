@@ -51,7 +51,8 @@ class _LoginPageState extends State<LoginPage> {
           backgroundColor: Colors.green,
         ),
       );
-
+      final authBox = await Hive.openBox('auth');
+      await authBox.put('current_user_email', email);
       Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(

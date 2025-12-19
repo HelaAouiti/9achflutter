@@ -16,6 +16,8 @@ void main() async {
   // Initialisation Hive
   await Hive.initFlutter();
   await Hive.openBox('users');
+  await Hive.openBox('favorites');
+  await Hive.openBox('auth');
 
   runApp(const MyApp());
 }
@@ -40,7 +42,6 @@ class MyApp extends StatelessWidget {
           '/login': (context) => LoginPage(),
           '/signup': (context) => SignupPage(),
           '/checkout': (context) => const CartPage(),
-          
         },
         // Page de démarrage
         home: LoginPage(),
